@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net481</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SlimeKeyViewer</AssemblyName>
+    <RootNamespace>SlimeKeyViewer</RootNamespace>
+    <Version>1.0.0</Version>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DebugType>portable</DebugType>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- ==== Paths ====================================================
+       Every one is overridable from the command line:
+         dotnet build -p:ADOFAIPath="D:/Games/ADOFAI"
+       Do NOT point these at "C:/Program Files (x86)/Steam/..." — that
+       folder on this machine is a dead Unity-project leftover with no
+       exe and no real Managed assemblies.
+  -->
+  <PropertyGroup>
+    <ADOFAIPath Condition="'$(ADOFAIPath)' == ''">E:/SteamLibrary/steamapps/common/A Dance of Fire and Ice</ADOFAIPath>
+    <GameManagedPath Condition="'$(GameManagedPath)' == ''">$(ADOFAIPath)/A Dance of Fire and Ice_Data/Managed</GameManagedPath>
+    <MelonLoaderPath Condition="'$(MelonLoaderPath)' == ''">$(ADOFAIPath)/MelonLoader/net472</MelonLoaderPath>
+
+    <!-- MelonLoader only. UnityModManager support was removed in 1.1.0. -->
+    <Deploy Condition="'$(Deploy)' == ''">true</Deploy>
+    <MelonModsPath Condition="'$(MelonModsPath)' == ''">$(ADOFAIPath)/Mods</MelonModsPath>
+  </PropertyGroup>
+
+  <!-- Listed as two flat globs rather than "**/*.cs": .baseline/source holds a full
+       copy of the sources for rollback, and a recursive glob would compile it twice. -->
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="Language/*.cs" />
+  </ItemGroup>
+
+  <!-- Sprites travel inside the DLL: one file to install, and pivot /
+       filtering / PPU stay under code control instead of being frozen
+       into an AssetBundle we would need a Unity 6000.3 editor to rebuild. -->
+  <ItemGroup>
+    <EmbeddedResource Include="assets/AnIdolslime1__149.png" LogicalName="SlimeKeyViewer.prep.png" />
+    <EmbeddedResource Include="assets/AnIdolslime__1373.png" LogicalName="SlimeKeyViewer.jump.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The monolithic facade. Required, not optional: DOTween.dll was built
+         against "UnityEngine, Version=0.0.0.0" rather than the split modules, so
+         resolving the types in its own signatures (Vector3, Color, Rect …) needs
+         this type-forwarding assembly present. Without it every DOTween call site
+         fails with CS0012. -->
+    <Reference Include="UnityEngine"><HintPath>$(GameManagedPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(GameManagedPath)/UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(GameManagedPath)/UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(GameManagedPath)/UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(GameManagedPath)/UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextCoreFontEngineModule"><HintPath>$(GameManagedPath)/UnityEngine.TextCoreFontEngineModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextCoreTextEngineModule"><HintPath>$(GameManagedPath)/UnityEngine.TextCoreTextEngineModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(GameManagedPath)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>$(GameManagedPath)/Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+
+    <!-- Shipped with the game. We never call DOTween.Init / SetTweensCapacity /
+         timeScale — the game owns that global state. Core shortcuts only; the
+         UI module (DOAnchorPos*, DOFade, DOColor) lives in Assembly-CSharp-firstpass
+         AND is duplicated in Assembly-CSharp, so referencing it invites CS0121. -->
+    <Reference Include="DOTween"><HintPath>$(GameManagedPath)/DOTween.dll</HintPath><Private>false</Private></Reference>
+
+    <Reference Include="MelonLoader"><HintPath>$(MelonLoaderPath)/MelonLoader.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <Target Name="CheckReferences" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(GameManagedPath)/UnityEngine.CoreModule.dll')"
+           Text="Managed folder not found: $(GameManagedPath). Pass -p:ADOFAIPath=... with your ADOFAI install." />
+    <Error Condition="!Exists('$(GameManagedPath)/DOTween.dll')"
+           Text="DOTween.dll not found in $(GameManagedPath). The mod relies on the copy shipped with the game." />
+    <Error Condition="!Exists('$(MelonLoaderPath)/MelonLoader.dll')"
+           Text="MelonLoader.dll not found: $(MelonLoaderPath)" />
+  </Target>
+
+  <!-- A deploy that silently fails to copy is worse than no deploy: you spend the
+       next hour debugging a build the game never loaded. Copy failures fail the build. -->
+  <Target Name="Deploy" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MelonModsPath)" ContinueOnError="false" />
+    <Message Importance="high" Text="Deployed -> $(MelonModsPath)" />
+  </Target>
+
+</Project>
